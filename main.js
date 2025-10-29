@@ -899,6 +899,13 @@ function updateCraftBaseUI(item) {
   // 显示制作选项
   $("#i_craft_base").parent().parent().show();
   
+  // 计算工匠系数
+  // 工匠效果默认为10%，会受暴饮之囊影响
+  // 工匠效果 = 10% * guzzling_bonus
+  // 工匠系数 = 1 - 工匠效果
+  const artisan_effect = 0.10 * guzzling_bonus; // guzzling_bonus 在 update_values() 中已计算
+  const artisan_coefficient = 1 - artisan_effect;
+  
   // 生成材料列表
   const materialsContainer = $("#base_craft_materials");
   materialsContainer.empty();
@@ -912,6 +919,9 @@ function updateCraftBaseUI(item) {
     const matPrice = get_full_item_price(mat.itemHrid, false);
     const savedPrice = save_data.base_craft_prices[matKey];
     
+    // 显示应用工匠系数后的实际消耗数量
+    const actualMatCount = (matCount * artisan_coefficient).toFixed(2);
+    
     const row = $(`
       <tr>
         <td style="padding: 5px;">
@@ -919,12 +929,13 @@ function updateCraftBaseUI(item) {
             <svg><use xlink:href="#${matIcon}"></use></svg>
           </div>
         </td>
-        <td style="padding: 5px; text-align: center;">${matCount}</td>
+        <td style="padding: 5px; text-align: center;">${actualMatCount}</td>
         <td style="padding: 5px; text-align: right;">
           <input type="number" 
                  class="base-craft-mat-price" 
                  data-mat-hrid="${matKey}"
                  data-mat-count="${matCount}"
+                 data-is-material="true"
                  min="0" 
                  max="100000000000" 
                  value="${savedPrice || ''}" 
@@ -936,7 +947,8 @@ function updateCraftBaseUI(item) {
     
     materialsContainer.append(row);
     const actualPrice = savedPrice || matPrice;
-    totalCost += actualPrice * matCount;
+    // 材料受工匠系数影响
+    totalCost += actualPrice * matCount * artisan_coefficient;
   });
   
   // 如果有升级物品（基础底子）
@@ -958,6 +970,7 @@ function updateCraftBaseUI(item) {
                  class="base-craft-mat-price" 
                  data-mat-hrid="${action.upgradeItemHrid}"
                  data-mat-count="1"
+                 data-is-material="false"
                  min="0" 
                  max="100000000000" 
                  value="${savedUpgradePrice || ''}" 
@@ -969,6 +982,7 @@ function updateCraftBaseUI(item) {
     
     materialsContainer.append(row);
     const actualUpgradePrice = savedUpgradePrice || upgradePrice;
+    // 主装备不受工匠系数影响，按1倍计算
     totalCost += actualUpgradePrice;
   }
   
@@ -994,7 +1008,14 @@ function updateCraftBaseUI(item) {
     $(".base-craft-mat-price").each(function() {
       const price = Number($(this).val()) || Number($(this).attr("placeholder"));
       const count = Number($(this).attr("data-mat-count"));
-      newTotal += price * count;
+      const isMaterial = $(this).attr("data-is-material") === "true";
+      
+      // 如果是材料，应用工匠系数；如果是主装备，不应用
+      if(isMaterial) {
+        newTotal += price * count * artisan_coefficient;
+      } else {
+        newTotal += price * count;
+      }
     });
     
     $("#i_base_craft_total").attr("placeholder", Math.round(newTotal));
