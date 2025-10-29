@@ -142,43 +142,43 @@
       <div>
         <table>
           <tr>
-            <td><p>Skill Level</p></td>
+            <td><p>强化等级</p></td>
             <td></td>
             <td align="right"><input id="i_enhancing_level" type="number" min="1" max="200" placeholder="100"></td>
           </tr>
           <tr>
-            <td><p>Observatory Level</p></td>
+            <td><p>天文台等级</p></td>
             <td></td>
             <td align="right"><input id="i_observatory_level" type="number" min="0" max="8" placeholder="0"></td>
           </tr>
           <tr><td colspan="3"><div class="top_divider"></div></td></tr>
           <tr>
-            <td><p>Enchanted Gloves</p></td>
+            <td><p>附魔手套</p></td>
             <td align="center"><input id="i_use_enchanted" type="checkbox" class="enhancer_stats_check_box"></td>
             <td align="right"><input id="i_enchanted_level" type="number" min="0" max="20" placeholder="0"></td>
           </tr>
           <tr>
-            <td><p>Guzzling Pouch</p></td>
+            <td><p>暴饮之囊</p></td>
             <td align="center"><input id="i_use_guzzling" type="checkbox" class="enhancer_stats_check_box"></td>
             <td align="right"><input id="i_guzzling_level" type="number" min="0" max="20" placeholder="0"></td>
           </tr>
           <tr>
-            <td><p>Enhancer's Top</p></td>
+            <td><p>强化师上衣</p></td>
             <td align="center"><input id="i_use_enhancer_top" type="checkbox" class="enhancer_stats_check_box"></td>
             <td align="right"><input id="i_enhancer_top_level" type="number" min="0" max="20" placeholder="0"></td>
           </tr>
           <tr>
-            <td><p>Enhancer's Bottoms</p></td>
+            <td><p>强化师下装</p></td>
             <td align="center"><input id="i_use_enhancer_bot" type="checkbox" class="enhancer_stats_check_box"></td>
             <td align="right"><input id="i_enhancer_bot_level" type="number" min="0" max="20" placeholder="0"></td>
           </tr>
           <tr>
-            <td><p>Philosopher's Necklace</p></td>
+            <td><p>贤者项链</p></td>
             <td align="center"><input id="i_use_philo_neck" type="checkbox" class="enhancer_stats_check_box"></td>
             <td align="right"><input id="i_philo_neck_level" type="number" min="0" max="20" placeholder="0"></td>
           </tr>
           <tr>
-            <td><p>Enhancing Charm</p></td>
+            <td><p>强化护符</p></td>
             <td align="center"><input id="i_use_charm" type="checkbox" class="enhancer_stats_check_box"></td>
             <td align="right"><input id="i_charm_level" type="number" min="0" max="20" placeholder="0"></td>
           </tr>
@@ -206,18 +206,18 @@
           </tr>
            <tr><td colspan="3"><div class="top_divider"></div></td></tr>
           <tr>
-            <td><p>Enhancing buff</p></td>
+            <td><p>强化buff</p></td>
             <td align="center"><input id="i_use_enhancing_buff" type="checkbox" class="enhancer_stats_check_box"></td>
             <td align="right"><input id="i_enhancing_buff_level" type="number" min="1" max="20" placeholder="1"></td>
           </tr>
           <tr>
-            <td><p>Experience buff</p></td>
+            <td><p>经验buff</p></td>
             <td align="center"><input id="i_use_experience_buff" type="checkbox" class="enhancer_stats_check_box"></td>
             <td align="right"><input id="i_experience_buff_level" type="number" min="1" max="20" placeholder="1"></td>
           </tr>
           <tr><td colspan="3"><div class="top_divider"></div></td></tr>
           <tr>
-            <td><p>Enhancer Level</p></td>
+            <td><p>强化器等级</p></td>
             <td></td>
             <td align="right"><input id="i_enhancer_level" type="number" min="0" max="20" placeholder="0"></td>
           </tr>
@@ -285,19 +285,30 @@
           <table>
             <tbody style="display: table-header-group">
               <tr>
-                <td colspan="2"><p>Hourly Rate:</p></td>
+                <td colspan="3" style="padding-bottom: 10px;">
+                  <div class="mode-switch-container">
+                    <button id="mode_hourly" class="mode-switch-btn mode-active" onclick="switchMode('hourly')">工时费</button>
+                    <button id="mode_price" class="mode-switch-btn" onclick="switchMode('price')">成品售价</button>
+                  </div>
+                </td>
+              </tr>
+              <tr id="row_hourly_rate">
+                <td colspan="2"><p>工时费:</p></td>
                 <td align="right"><input id="i_hourly_rate" type="number" min="0" max="100000000000" placeholder="5000000"></td>
               </tr>
-              <tr>
-                <td colspan="2"><p>% Rate:</p></td>
+              <tr id="row_percent_rate">
+                <td colspan="2"><p>利润率%:</p></td>
                 <td align="right"><input id="i_percent_rate" type="number" min="0" max="100" placeholder="2"></td>
               </tr>
-              <tr><td colspan="3"><div class="top_divider"></div></td></tr>
-              <tr>
-                <td style="padding: 0px 5px 0px 2px; font-weight: bold; text-align: center;">Item</td>
-                <td style="padding: 0px 5px 0px 2px; font-weight: bold; text-align: center;">Count</td>
-                <td style="padding: 0px 5px 0px 2px; font-weight: bold; text-align: center;">Price</td>
+              <tr id="row_target_price" style="display: none;">
+                <td colspan="2"><p>成品售价:</p></td>
+                <td align="right"><input id="i_target_price" type="number" min="0" max="100000000000" placeholder="0"></td>
               </tr>
+              <tr id="row_tax_rate" style="display: none;">
+                <td colspan="2"><p>税率%:</p></td>
+                <td align="right"><input id="i_tax_rate" type="number" min="0" max="100" step="0.1" placeholder="2"></td>
+              </tr>
+              <tr><td colspan="3"><div class="top_divider"></div></td></tr>
               <tr id="mat_1_cell">
                 <td id="mat_1_icon" class="mat_icon">
                   <svg><use xlink:href="#"></use></svg>
@@ -362,11 +373,47 @@
                 <td><input type="number" min="0" max="100000000000" value="0" id="i_protect_price" placeholder="400"></td>
               </tr>
               <tr>
+                <td colspan="3" style="text-align: right; padding: 5px;">
+                  <label style="cursor: pointer;">
+                    <input type="checkbox" id="i_craft_base" style="cursor: pointer;">
+                    <span style="margin-left: 5px;">制作装备</span>
+                  </label>
+                </td>
+              </tr>
+              <tr id="base_item_row">
                 <td id="base_icon" class="mat_icon">
                   <svg><use xlink:href="#"></use></svg>
                 </td>
                 <td></td>
                 <td><input id="i_base_price" type="number" min="0" max="100000000000" value="0" placeholder="400"></td>
+              </tr>
+              <tr id="base_craft_section" style="display: none;">
+                <td colspan="3">
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                      <tr>
+                        <th style="padding: 5px; text-align: left;">物品</th>
+                        <th style="padding: 5px; text-align: center;">数量</th>
+                        <th style="padding: 5px; text-align: right;">价格</th>
+                      </tr>
+                    </thead>
+                    <tbody id="base_craft_materials">
+                      <!-- 材料列表将通过JavaScript动态生成 -->
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colspan="2" style="padding: 5px; text-align: right; font-weight: bold;">
+                          <div id="base_icon_craft" class="mat_icon" style="display: inline-block; vertical-align: middle;">
+                            <svg><use xlink:href="#"></use></svg>
+                          </div>
+                        </td>
+                        <td style="padding: 5px; text-align: right;">
+                          <input id="i_base_craft_total" type="number" readonly style="font-weight: bold; background: #1a1c2e; border: 1px solid #98a7e9;" placeholder="0">
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </td>
               </tr>
               <tr><td colspan="3"><div class="top_divider"></div></td></tr>
               <tr>
@@ -383,8 +430,8 @@
         <thead>
           <tr>
             <th class="results_header_cells">Prot</th>
-            <th class="results_header_cells">Actions</th>
-            <th class="results_header_cells">Time</th>
+            <th class="results_header_cells">次数</th>
+            <th class="results_header_cells">耗时</th>
             <th class="results_header_cells">Exp</th>
             <th class="results_header_cells">Exp/h</th>
             <th class="results_header_cells" title="Gold / Experience">G/E</th>
@@ -394,9 +441,12 @@
             <th class="results_header_icon_cell" id="r_mat_4_icon"><svg><use xlink:href="#"></use></svg></th>
             <th class="results_header_icon_cell" id="r_mat_5_icon"><svg><use xlink:href="#"></use></svg></th>
             <th class="results_header_icon_cell" ><svg><use xlink:href="#coin"></use></svg></th>
-            <th class="results_header_cells">Protects</th>
-            <th class="results_header_cells" title="Enhancing costs only, excludes base item">Mat Cost</th>
-            <th class="results_header_cells" title="(Mat Cost + Base Item + Time * Hourly Rate) * (1 + % Rate)">Total Cost</th>
+            <th class="results_header_cells">保护</th>
+            <th class="results_header_cells" title="Enhancing costs only, excludes base item">材料成本</th>
+            <th class="results_header_cells" id="total_cost_header" title="(Mat Cost + Base Item + Time * Hourly Rate) * (1 + % Rate)">总成本</th>
+            <th class="results_header_cells price_mode_only" id="calc_profit_header" title="Profit amount per enhancement" style="display: none;">单次利润</th>
+            <th class="results_header_cells price_mode_only" id="calc_rate_header" title="Profit rate or calculated hourly rate" style="display: none;">利润率%</th>
+            <th class="results_header_cells price_mode_only" id="calc_hourly_header" title="Hourly rate" style="display: none;">工时费</th>
           </tr>
         </thead>
         <tbody id="results_table_body" style="display: table-header-group">

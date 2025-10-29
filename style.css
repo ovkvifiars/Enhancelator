@@ -61,6 +61,35 @@ ul {
 	cursor: pointer;
 }
 
+.mode-switch-container {
+	display: flex;
+	gap: 5px;
+	width: 100%;
+}
+
+.mode-switch-btn {
+	flex: 1;
+	padding: 8px 12px;
+	border: 1px solid #98a7e9;
+	border-radius: 5px;
+	background: #2c2e45;
+	color: white;
+	font-family: "Roboto", "Helvetica", "Arial", sans-serif;
+	font-size: 14px;
+	cursor: pointer;
+	transition: all 0.3s ease;
+}
+
+.mode-switch-btn:hover {
+	background: #3a3d5a;
+}
+
+.mode-switch-btn.mode-active {
+	background: #4357af;
+	border-color: #98a7e9;
+	box-shadow: 0 0 8px rgba(152, 167, 233, 0.5);
+}
+
 .by {
 	position: absolute;
 	display: flex;

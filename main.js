@@ -61,6 +61,15 @@ save_data = {
 
   hourly_rate: 3000000,
   percent_rate: 2,
+  
+  // pricing mode: 'hourly' or 'price'
+  pricing_mode: 'hourly',
+  target_price: 0,
+  tax_rate: 2,
+
+  // base item crafting
+  craft_base: false,
+  base_craft_prices: {},
 
   // simulation
   emu_time: 32768,
@@ -100,6 +109,7 @@ results = {
 temp = 0;
 game_data = null;
 price_data = null;
+trans_data = null;
 enhancable_items = null,
 g_sim_results = null,
 
@@ -199,55 +209,47 @@ function Enhancelate(save_data, sim_data)
   return results;
 }
 
-function get_full_item_price(hrid) {
-  let final_cost = 0;
-  let is_base_item = true;
-
+function get_full_item_price(hrid, use_bid = false) {
+  // 直接返回市场价格，不计算制作成本
   if(hrid == "/items/coin")
   {
     return 1;
   }
 
-  // find action to make this
-  if(game_data.itemDetailMap[hrid].categoryHrid == "/item_categories/equipment")
-  {
-    const action = Object.values(game_data.actionDetailMap).find((a) => a.function == "/action_functions/production" && a.outputItems[0].itemHrid == hrid);
-    is_base_item = (action == null);
-    if(!is_base_item)
-    {
-      action.inputItems.forEach((item) => {
-        inputItemCost = item.count * get_full_item_price(item.itemHrid);
-        // Only charms. The rest get padded to compensate for bases fluctuating in price so much.
-        // No guzzling. Need that padding for base items otherwise enhancers risk losing tons of money on small price changes.
-        if(hrid.includes("charm")) { inputItemCost *= 0.90; }
-        final_cost += inputItemCost;
-      });
-      if(action.upgradeItemHrid != "")
-      {
-        final_cost += get_full_item_price(action.upgradeItemHrid);
-      }
-    }
-  }
+  const vendor = game_data.itemDetailMap[hrid].sellPrice;
+  // hacka wacka wacka for trainee charms
+  if(hrid.includes("trainee") && hrid.includes("charm")) { return 250000; }
 
-  if(is_base_item)
-  {
-    const vendor = game_data.itemDetailMap[hrid].sellPrice;
-    // hacka wacka wacka for trainee charms
-    if(hrid.includes("trainee") && hrid.includes("charm")) { return 250000; }
+  const enhanced_price_data = price_data.marketData[hrid];
+  if(enhanced_price_data == undefined) { return vendor; }
 
-    const enhanced_price_data = price_data.marketData[hrid];
-    if(enhanced_price_data == undefined) { return vendor; }
+  const item_price_data = enhanced_price_data[0];
+  if(item_price_data == undefined) { return vendor; }
 
-    const item_price_data = enhanced_price_data[0];
-    if(item_price_data == undefined) { return vendor; }
-
-    const ask = item_price_data.a == -1 ? item_price_data.b : item_price_data.a;
-    const bid = item_price_data.b == -1 ? item_price_data.a : item_price_data.b;
-    final_cost = (ask + bid) / 2.0;
-    if(final_cost == -1.0) { final_cost = vendor; }
-  }
+  const ask = item_price_data.a == -1 ? item_price_data.b : item_price_data.a;
+  const bid = item_price_data.b == -1 ? item_price_data.a : item_price_data.b;
+  // 材料使用ask价格（买入价），成品使用bid价格（卖出价）
+  const final_cost = use_bid ? bid : ask;
+  if(final_cost == -1.0) { return vendor; }
 
   return final_cost;
+}
+
+// 获取指定强化等级的bid价格
+function get_enhanced_bid_price(hrid, enhancement_level) {
+  const vendor = game_data.itemDetailMap[hrid].sellPrice;
+  
+  const enhanced_price_data = price_data.marketData[hrid];
+  if(enhanced_price_data == undefined) { return vendor; }
+  
+  const item_price_data = enhanced_price_data[enhancement_level];
+  if(item_price_data == undefined) { return vendor; }
+  
+  const ask = item_price_data.a == -1 ? item_price_data.b : item_price_data.a;
+  const bid = item_price_data.b == -1 ? item_price_data.a : item_price_data.b;
+  
+  if(bid == -1) { return vendor; }
+  return bid;
 }
 
 //tims as seconds, return string "00h:00m:00s"
@@ -258,6 +260,24 @@ function formatTime(seconds) {
   var remainingSeconds = (Math.floor(seconds % 60)).toString()
 
   return hours+"h, "+minutes.padStart(2, '0')+"m, "+remainingSeconds.padStart(2, '0')+"s"
+}
+
+// Format currency numbers to K/M/B format with 2 decimal places
+function formatCurrency(num) {
+  if (num === 0) return "0";
+  
+  const absNum = Math.abs(num);
+  const sign = num < 0 ? "-" : "";
+  
+  if (absNum >= 1e9) {
+    return sign + (absNum / 1e9).toFixed(2) + "B";
+  } else if (absNum >= 1e6) {
+    return sign + (absNum / 1e6).toFixed(2) + "M";
+  } else if (absNum >= 1e3) {
+    return sign + (absNum / 1e3).toFixed(2) + "K";
+  } else {
+    return sign + absNum.toFixed(2);
+  }
 }
 
 // Update enhancer traits that built off of given inputs
@@ -379,7 +399,14 @@ function reset_results() {
   const protect_levels = [...Array(save_data.stop_at - 1).keys()].map((x, i) => i + 2);
   all_results = protect_levels.map((a) => { sim_data.protect_at = a; return Enhancelate(save_data, sim_data); });
 
-  const base_price = ($("#i_base_price").val() == "") ? Number($("#i_base_price").attr("placeholder")) : Number($("#i_base_price").val());
+  // 根据制作模式选择底子价格
+  let base_price;
+  if(save_data.craft_base) {
+    // 制作模式：使用placeholder中的总成本
+    base_price = Number($("#i_base_craft_total").attr("placeholder")) || 0;
+  } else {
+    base_price = ($("#i_base_price").val() == "") ? Number($("#i_base_price").attr("placeholder")) : Number($("#i_base_price").val());
+  }
 
   all_results = all_results.map((a) => {
     a.mat_cost = 
@@ -390,28 +417,86 @@ function reset_results() {
       sim_data.mat_5 * a.actions * sim_data.prc_5 +
       sim_data.protect_price * a.protect_count +
       sim_data.coins * a.actions;
-    a.ttl_cost = (base_price + a.mat_cost + save_data.hourly_rate * sim_data.attempt_time * a.actions / 3600) * (save_data.percent_rate / 100.0 + 1.0);
+    
+    // 根据模式计算总成本
+    if (save_data.pricing_mode === 'hourly') {
+      // 工时费模式：(基础价格 + 材料成本 + 工时费) * (1 + 利润率%)
+      a.ttl_cost = (base_price + a.mat_cost + save_data.hourly_rate * sim_data.attempt_time * a.actions / 3600) * (save_data.percent_rate / 100.0 + 1.0);
+      a.calculated_hourly = save_data.hourly_rate;
+      a.calculated_profit_rate = save_data.percent_rate;
+      a.profit_amount = a.ttl_cost - base_price - a.mat_cost - save_data.hourly_rate * sim_data.attempt_time * a.actions / 3600;
+    } else {
+      // 成品售价模式：根据目标售价反推工时费
+      const target_price = ($("#i_target_price").val() == "") ? Number($("#i_target_price").attr("placeholder")) : Number($("#i_target_price").val());
+      const tax_rate = ($("#i_tax_rate").val() == "") ? Number($("#i_tax_rate").attr("placeholder")) : Number($("#i_tax_rate").val());
+      
+      // 扣税后金额 = 售价 × (1 - 税率%)
+      const price_after_tax = target_price * (1 - tax_rate / 100.0);
+      a.ttl_cost = target_price;
+      
+      // 反推工时费 = (扣税后金额 - 基础 - 材料) / 时间（小时）
+      const time_hours = sim_data.attempt_time * a.actions / 3600;
+      const base_and_mat = base_price + a.mat_cost;
+      a.calculated_hourly = time_hours > 0 ? (price_after_tax - base_and_mat) / time_hours : 0;
+      
+      // 利润率% = (扣税后金额 - 基础 - 材料) / (基础 + 材料) × 100
+      a.calculated_profit_rate = base_and_mat > 0 ? ((price_after_tax - base_and_mat) / base_and_mat) * 100 : 0;
+      
+      // 利润额 = 扣税后金额 - 基础 - 材料
+      a.profit_amount = price_after_tax - base_and_mat;
+    }
     return a;
   });
   
   const min_mat_cost = all_results.reduce((min, elm) => elm.mat_cost < min ? elm.mat_cost : min, 999999999999999);
   const min_ttl_cost = all_results.reduce((min, elm) => elm.ttl_cost < min ? elm.ttl_cost : min, 999999999999999);
+  const max_hourly = all_results.reduce((max, elm) => elm.calculated_hourly > max ? elm.calculated_hourly : max, -999999999999999);
 
   for(let protect_at = 2; protect_at <= save_data.stop_at; protect_at++)
   {
     result = all_results[protect_at - 2];
     
     var newRow = tbodyRef.insertRow();
-    if(result.mat_cost == min_mat_cost) { newRow.style.backgroundColor = "#223355"; }
-    if(result.ttl_cost == min_ttl_cost) { newRow.style.backgroundColor = "#224422"; }
+    // 根据模式选择不同的高亮规则
+    if(save_data.pricing_mode === 'hourly') {
+      // 工时费模式：蓝色标最低材料成本，绿色标最低总成本
+      if(result.mat_cost == min_mat_cost) { newRow.style.backgroundColor = "#223355"; }
+      if(result.ttl_cost == min_ttl_cost) { newRow.style.backgroundColor = "#224422"; }
+    } else {
+      // 成品售价模式：蓝色标最低材料成本，绿色标最高工时费
+      if(result.mat_cost == min_mat_cost) { newRow.style.backgroundColor = "#223355"; }
+      if(result.calculated_hourly == max_hourly) { newRow.style.backgroundColor = "#224422"; }
+    }
     var newText = null;
 
-    function AddNumberCell(num, rounding) {
+    function AddNumberCell(num, rounding, isCurrency, hideInPriceMode, showOnlyInPriceMode) {
       if(rounding == null) rounding = 0;
-      const options = {minimumFractionDigits: rounding, maximumFractionDigits: rounding};
-      newText = document.createTextNode(Number(Number.parseFloat(num)).toLocaleString(undefined, options));
+      if(isCurrency == null) isCurrency = false;
+      if(hideInPriceMode == null) hideInPriceMode = false;
+      if(showOnlyInPriceMode == null) showOnlyInPriceMode = false;
+      
+      let displayText;
+      if(isCurrency) {
+        displayText = formatCurrency(num);
+      } else {
+        const options = {minimumFractionDigits: rounding, maximumFractionDigits: rounding};
+        displayText = Number(Number.parseFloat(num)).toLocaleString(undefined, options);
+      }
+      
+      newText = document.createTextNode(displayText);
       newCell = newRow.insertCell();
       newCell.className = 'results_data_cells';
+      
+      // 在成品售价模式下隐藏Total Cost列
+      if(hideInPriceMode && save_data.pricing_mode === 'price') {
+        newCell.style.display = 'none';
+      }
+      
+      // 只在成品售价模式下显示的列
+      if(showOnlyInPriceMode && save_data.pricing_mode === 'hourly') {
+        newCell.style.display = 'none';
+      }
+      
       newCell.appendChild(newText);
     };
 
@@ -426,7 +511,7 @@ function reset_results() {
     // Exp metrics
     AddNumberCell(result.exp);
     AddNumberCell(result.exp/(sim_data.attempt_time * result.actions / 3600));
-    AddNumberCell(result.mat_cost / result.exp);
+    AddNumberCell(result.mat_cost / result.exp, 0, true); // G/E - 货币格式
 
     // materials and costs
     if(sim_data.mat_1 > 0) { AddNumberCell(sim_data.mat_1 * result.actions); }
@@ -436,8 +521,13 @@ function reset_results() {
     if(sim_data.mat_5 > 0) { AddNumberCell(sim_data.mat_5 * result.actions); }
     AddNumberCell(sim_data.coins * result.actions);
     AddNumberCell(result.protect_count, 2);
-    AddNumberCell(result.mat_cost);
-    AddNumberCell(result.ttl_cost);
+    AddNumberCell(result.mat_cost, 0, true); // 材料成本 - 货币格式
+    AddNumberCell(result.ttl_cost, 0, true, true); // 总成本 - 货币格式，在成品售价模式下隐藏
+    
+    // 显示利润额、利润率%、工时费（只在成品售价模式下显示）
+    AddNumberCell(result.profit_amount, 0, true, false, true); // 利润额 - 只在成品售价模式显示
+    AddNumberCell(result.calculated_profit_rate, 2, false, false, true); // 利润率% - 只在成品售价模式显示
+    AddNumberCell(result.calculated_hourly, 0, true, false, true); // 工时费 - 只在成品售价模式显示
   }
 
   // Simulation
@@ -465,11 +555,11 @@ function reset_results() {
 
   var decompElement = document.getElementById('decomp');
   const essenceCount = Math.floor(Math.round(2.0 * (0.5 + 0.1*Math.pow(1.05, Number(sim_data.item_level))) * Math.pow(2, Number(save_data.stop_at))));
-  const essenceMarketCost = get_full_item_price("/items/enhancing_essence");
+  const essenceMarketCost = get_full_item_price("/items/enhancing_essence", true); // essence是卖出的，使用bid价格
   const decompValue = essenceCount * essenceMarketCost * 0.78;
-  const options = {minimumFractionDigits: 0, maximumFractionDigits: 0};
-  const formatedCost = Number(Number.parseFloat(decompValue)).toLocaleString(undefined, options);
-  decompElement.textContent = "Decomposition Value: " + formatedCost + " (" + essenceCount + " * " + essenceMarketCost + " * 0.78)";
+  const formatedCost = formatCurrency(decompValue);
+  const formatedEssenceCost = formatCurrency(essenceMarketCost);
+  decompElement.textContent = "Decomposition Value: " + formatedCost + " (" + essenceCount + " * " + formatedEssenceCost + " * 0.78)";
 }
 
 function updateProgress(completed, total) {
@@ -507,10 +597,19 @@ function updateSimData() {
   var tbodyRef = document.getElementById('sim_result_table').getElementsByTagName('tbody')[0];
   var newText = null;
   var newCell = null;
-  function AddNumberCell(num, rounding) {
+  function AddNumberCell(num, rounding, isCurrency) {
     if(rounding == null) rounding = 0;
-    const options = {minimumFractionDigits: rounding, maximumFractionDigits: rounding};
-    newText = document.createTextNode(Number(Number.parseFloat(num)).toLocaleString(undefined, options));
+    if(isCurrency == null) isCurrency = false;
+    
+    let displayText;
+    if(isCurrency) {
+      displayText = formatCurrency(num);
+    } else {
+      const options = {minimumFractionDigits: rounding, maximumFractionDigits: rounding};
+      displayText = Number(Number.parseFloat(num)).toLocaleString(undefined, options);
+    }
+    
+    newText = document.createTextNode(displayText);
     newCell = newRow.insertCell();
     newCell.className = 'results_data_cells';
     newCell.appendChild(newText);
@@ -543,11 +642,11 @@ function updateSimData() {
     if (est_mats[3] > 0) { AddNumberCell(est_mats[3] * est_actions); }
     if (est_mats[4] > 0) { AddNumberCell(est_mats[4] * est_actions); }
     AddNumberCell(est_coins);
-    AddNumberCell(est_protect_count);
-    // Estimated Cost
-    AddNumberCell(est_result.cost);
-    AddNumberCell(est_result.cost + base_price);
-    AddNumberCell(est_result.cost_w_aux + base_price);
+    AddNumberCell(est_protect_count, 2);
+    // Estimated Cost - 货币格式
+    AddNumberCell(est_result.cost, 0, true);
+    AddNumberCell(est_result.cost + base_price, 0, true);
+    AddNumberCell(est_result.cost_w_aux + base_price, 0, true);
   }
   const money_i_have = save_data.emu_money;
   if (g_sim_results != null && money_i_have > 0) {
@@ -739,7 +838,8 @@ function change_item(value, key) {
   let protect_index = 0;
   protect_item_hrids.forEach((protection_hrid, i) =>
   {
-    const this_cost = get_full_item_price(protection_hrid);
+    // 底子和保护物品都使用ask价格（买入价）
+    const this_cost = get_full_item_price(protection_hrid, false);
     if(i == 0) { base_price = this_cost; }
     if(protection_hrid.includes("_refined")) return;
 
@@ -763,30 +863,191 @@ function change_item(value, key) {
   $(sim_data.protect_element_id).attr("class", "btn_icon_selected");
 
 	sim_data.item_level = item.itemLevel
+  
+  // 更新成品售价的默认值为对应强化等级的bid价格
+  const enhanced_bid = get_enhanced_bid_price(item.hrid, save_data.stop_at);
+  $("#i_target_price").attr("placeholder", enhanced_bid);
+  
 	enhancable_items.forEach(function(item, index) {
 		key = item.hrid.substring(7);
 	  $("#"+key+"_list").css("display", "flex")
 	});
+  
+  // 更新制作装备UI
+  updateCraftBaseUI(item);
+  
 	update_values();
 	updateBookmarkUI();
 	renderFavoritesBar();
 }
 
+// 更新制作装备UI
+function updateCraftBaseUI(item) {
+  const action = Object.values(game_data.actionDetailMap).find((a) => 
+    a.function == "/action_functions/production" && a.outputItems[0].itemHrid == item.hrid
+  );
+  
+  // 如果物品不能制作，隐藏制作选项
+  if(!action || !action.inputItems || action.inputItems.length === 0) {
+    $("#i_craft_base").parent().parent().hide();
+    save_data.craft_base = false;
+    $("#i_craft_base").prop("checked", false);
+    toggleCraftBase();
+    return;
+  }
+  
+  // 显示制作选项
+  $("#i_craft_base").parent().parent().show();
+  
+  // 生成材料列表
+  const materialsContainer = $("#base_craft_materials");
+  materialsContainer.empty();
+  
+  let totalCost = 0;
+  
+  action.inputItems.forEach((mat, index) => {
+    const matKey = mat.itemHrid;
+    const matCount = mat.count;
+    const matIcon = mat.itemHrid.substring(7);
+    const matPrice = get_full_item_price(mat.itemHrid, false);
+    const savedPrice = save_data.base_craft_prices[matKey];
+    
+    const row = $(`
+      <tr>
+        <td style="padding: 5px;">
+          <div class="mat_icon" style="display: inline-block; vertical-align: middle;">
+            <svg><use xlink:href="#${matIcon}"></use></svg>
+          </div>
+        </td>
+        <td style="padding: 5px; text-align: center;">${matCount}</td>
+        <td style="padding: 5px; text-align: right;">
+          <input type="number" 
+                 class="base-craft-mat-price" 
+                 data-mat-hrid="${matKey}"
+                 data-mat-count="${matCount}"
+                 min="0" 
+                 max="100000000000" 
+                 value="${savedPrice || ''}" 
+                 placeholder="${matPrice}"
+                 style="width: 100%; text-align: right;">
+        </td>
+      </tr>
+    `);
+    
+    materialsContainer.append(row);
+    const actualPrice = savedPrice || matPrice;
+    totalCost += actualPrice * matCount;
+  });
+  
+  // 如果有升级物品（基础底子）
+  if(action.upgradeItemHrid && action.upgradeItemHrid !== "") {
+    const upgradeIcon = action.upgradeItemHrid.substring(7);
+    const upgradePrice = get_full_item_price(action.upgradeItemHrid, false);
+    const savedUpgradePrice = save_data.base_craft_prices[action.upgradeItemHrid];
+    
+    const row = $(`
+      <tr>
+        <td style="padding: 5px;">
+          <div class="mat_icon" style="display: inline-block; vertical-align: middle;">
+            <svg><use xlink:href="#${upgradeIcon}"></use></svg>
+          </div>
+        </td>
+        <td style="padding: 5px; text-align: center;">1</td>
+        <td style="padding: 5px; text-align: right;">
+          <input type="number" 
+                 class="base-craft-mat-price" 
+                 data-mat-hrid="${action.upgradeItemHrid}"
+                 data-mat-count="1"
+                 min="0" 
+                 max="100000000000" 
+                 value="${savedUpgradePrice || ''}" 
+                 placeholder="${upgradePrice}"
+                 style="width: 100%; text-align: right;">
+        </td>
+      </tr>
+    `);
+    
+    materialsContainer.append(row);
+    const actualUpgradePrice = savedUpgradePrice || upgradePrice;
+    totalCost += actualUpgradePrice;
+  }
+  
+  // 设置总成本（使用placeholder显示）
+  $("#i_base_craft_total").attr("placeholder", Math.round(totalCost));
+  $("#i_base_craft_total").val("");
+  $("#base_icon_craft > svg > use").attr("xlink:href", "#"+item.hrid.substring(7));
+  
+  // 绑定材料价格变化事件
+  $(".base-craft-mat-price").off("input").on("input", function() {
+    const matHrid = $(this).attr("data-mat-hrid");
+    const inputVal = $(this).val();
+    
+    // 如果用户清空了输入，从保存的价格中删除
+    if(inputVal === "") {
+      delete save_data.base_craft_prices[matHrid];
+    } else {
+      save_data.base_craft_prices[matHrid] = Number(inputVal);
+    }
+    
+    // 重新计算总成本
+    let newTotal = 0;
+    $(".base-craft-mat-price").each(function() {
+      const price = Number($(this).val()) || Number($(this).attr("placeholder"));
+      const count = Number($(this).attr("data-mat-count"));
+      newTotal += price * count;
+    });
+    
+    $("#i_base_craft_total").attr("placeholder", Math.round(newTotal));
+    localStorage.setItem("Enhancelator", JSON.stringify(save_data));
+    update_values();
+  });
+  
+  // 应用保存的状态
+  $("#i_craft_base").prop("checked", save_data.craft_base);
+  toggleCraftBase();
+}
+
+// 切换制作装备模式
+function toggleCraftBase() {
+  const isCrafting = $("#i_craft_base").prop("checked");
+  save_data.craft_base = isCrafting;
+  
+  if(isCrafting) {
+    $("#base_item_row").hide();
+    $("#base_craft_section").show();
+  } else {
+    $("#base_item_row").show();
+    $("#base_craft_section").hide();
+  }
+  
+  localStorage.setItem("Enhancelator", JSON.stringify(save_data));
+  update_values();
+}
+
 function filter() {
-	temp = $("#item_filter").val().toLowerCase()
-	if(temp != "") {
+	const searchTerm = $("#item_filter").val().toLowerCase().trim();
+	
+	if(searchTerm != "") {
     enhancable_items.forEach(function(item) {
-      key = item.hrid.substring(7);
-      if(key.includes(temp))
-        $("#"+key+"_list").css("display", "flex")
-      else
-        $("#"+key+"_list").css("display", "none")
-    })
+      const key = item.hrid.substring(7);
+      const englishName = item.name.toLowerCase();
+      const chineseName = (trans_data[item.name] || "").toLowerCase();
+      
+      // 模糊匹配：支持英文名称或中文名称匹配
+      const matchesEnglish = englishName.includes(searchTerm);
+      const matchesChinese = chineseName.includes(searchTerm);
+      
+      if(matchesEnglish || matchesChinese) {
+        $("#"+key+"_list").css("display", "flex");
+      } else {
+        $("#"+key+"_list").css("display", "none");
+      }
+    });
   } else {
     enhancable_items.forEach(function(item) {
       key = item.hrid.substring(7);
-      $("#"+key+"_list").css("display", "flex")
-    })
+      $("#"+key+"_list").css("display", "flex");
+    });
   }
   if(save_data.hide_junk)
   {
@@ -849,6 +1110,11 @@ function init_user_data() {
     if(save_data.use_charm == undefined) save_data.use_charm = false;
     if(save_data.charm_level == undefined) save_data.charm_level = 0;
     if(save_data.charm_tier == undefined) save_data.charm_tier = "trainee";
+    if(save_data.pricing_mode == undefined) save_data.pricing_mode = 'hourly';
+    if(save_data.target_price == undefined) save_data.target_price = 0;
+    if(save_data.tax_rate == undefined) save_data.tax_rate = 2;
+    if(save_data.craft_base == undefined) save_data.craft_base = false;
+    if(save_data.base_craft_prices == undefined) save_data.base_craft_prices = {};
 
     // update the UI with the saved values
 		$("#i_enhancing_level").val(save_data.enhancing_level);
@@ -884,6 +1150,11 @@ function init_user_data() {
 
     if($("#i_hourly_rate").attr("placeholder") != save_data.hourly_rate) { $("#i_hourly_rate").val(save_data.hourly_rate); }
     if($("#i_percent_rate").attr("placeholder") != save_data.percent_rate) { $("#i_percent_rate").val(save_data.percent_rate); }
+    if(save_data.target_price > 0) { $("#i_target_price").val(save_data.target_price); }
+    if($("#i_tax_rate").attr("placeholder") != save_data.tax_rate) { $("#i_tax_rate").val(save_data.tax_rate); }
+
+    // 恢复定价模式
+    switchMode(save_data.pricing_mode);
 
     $("#i_emu_time").val(save_data.emu_time);
     $("#i_emu_w_aux").prop("checked", save_data.emu_w_aux);
@@ -952,6 +1223,41 @@ function tea_selection(element)
   reset_results();
 }
 
+function switchMode(mode) {
+  save_data.pricing_mode = mode;
+  
+  // 更新按钮状态
+  $("#mode_hourly").toggleClass("mode-active", mode === 'hourly');
+  $("#mode_price").toggleClass("mode-active", mode === 'price');
+  
+  if (mode === 'hourly') {
+    // 工时费模式：显示工时费和利润率输入框
+    $("#row_hourly_rate").show();
+    $("#row_percent_rate").show();
+    $("#row_target_price").hide();
+    $("#row_tax_rate").hide();
+    $("#total_cost_header").show(); // 显示Total Cost列头
+    // 隐藏成品售价模式专属的列
+    $(".price_mode_only").hide();
+  } else {
+    // 成品售价模式：显示成品售价和税率输入框
+    $("#row_hourly_rate").hide();
+    $("#row_percent_rate").hide();
+    $("#row_target_price").show();
+    $("#row_tax_rate").show();
+    $("#total_cost_header").hide(); // 隐藏Total Cost列头
+    // 显示成品售价模式专属的列
+    $(".price_mode_only").show();
+  }
+  
+  // 保存模式设置
+  localStorage.setItem("Enhancelator", JSON.stringify(save_data));
+  
+  // 重新计算
+  update_values();
+  reset_results();
+}
+
 function protect_selection(element)
 {
   const index = Number(element.id.substring(5, 6));
@@ -978,6 +1284,11 @@ $(document).ready(function() {
   request.open("GET", "init_client_info.json", false);
   request.send(null);
   game_data = JSON.parse(request.responseText);
+
+  const transRequest = new XMLHttpRequest();
+  transRequest.open("GET", "trans_dic.json", false);
+  transRequest.send(null);
+  trans_data = JSON.parse(transRequest.responseText);
 
 	//generte items list
   enhancable_items = Object.entries(game_data.itemDetailMap).reduce((acc, cur) => {
@@ -1058,6 +1369,48 @@ $(document).ready(function() {
   $("#i_emu_w_aux").on("input", function() {
     save_data.emu_w_aux = $("#i_emu_w_aux").prop('checked');
     update_values(false);
+  });
+
+  // 添加定价模式相关的事件监听器
+  $("#i_hourly_rate").on("input", function() {
+    save_data.hourly_rate = Number($("#i_hourly_rate").val()) || Number($("#i_hourly_rate").attr("placeholder"));
+    localStorage.setItem("Enhancelator", JSON.stringify(save_data));
+    update_values();
+  });
+
+  $("#i_percent_rate").on("input", function() {
+    save_data.percent_rate = Number($("#i_percent_rate").val()) || Number($("#i_percent_rate").attr("placeholder"));
+    localStorage.setItem("Enhancelator", JSON.stringify(save_data));
+    update_values();
+  });
+
+  $("#i_target_price").on("input", function() {
+    save_data.target_price = Number($("#i_target_price").val()) || Number($("#i_target_price").attr("placeholder"));
+    localStorage.setItem("Enhancelator", JSON.stringify(save_data));
+    update_values();
+  });
+
+  $("#i_tax_rate").on("input", function() {
+    save_data.tax_rate = Number($("#i_tax_rate").val()) || Number($("#i_tax_rate").attr("placeholder"));
+    localStorage.setItem("Enhancelator", JSON.stringify(save_data));
+    update_values();
+  });
+
+  $("#i_stop_at").on("input", function() {
+    save_data.stop_at = Number($("#i_stop_at").val());
+    localStorage.setItem("Enhancelator", JSON.stringify(save_data));
+    
+    // 更新成品售价的默认值为新的强化等级的bid价格
+    if(save_data.selected_item) {
+      const enhanced_bid = get_enhanced_bid_price(save_data.selected_item, save_data.stop_at);
+      $("#i_target_price").attr("placeholder", enhanced_bid);
+    }
+    
+    update_values();
+  });
+
+  $("#i_craft_base").on("change", function() {
+    toggleCraftBase();
   });
 
   // Bookmark button
